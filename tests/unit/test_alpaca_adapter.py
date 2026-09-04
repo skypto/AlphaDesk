@@ -93,6 +93,10 @@ class FakeTradingClient:
         self.submitted_request = request
         return raw_order()
 
+    def close_position(self, symbol_or_asset_id: str) -> SimpleNamespace:
+        assert symbol_or_asset_id == "NVDA260918C00120000"
+        return raw_order()
+
 
 class FakeTradingStream:
     def subscribe_trade_updates(self, handler: object) -> None:
@@ -150,3 +154,17 @@ async def test_h3_submission_maps_internal_intent_to_atomic_mleg_request() -> No
     submitted_request = cast(Any, client.submitted_request)
     assert submitted_request.order_class.value == "mleg"
     assert len(submitted_request.legs) == 2
+
+
+@pytest.mark.asyncio
+async def test_alpaca_close_position_delegates_and_maps_order() -> None:
+    client = FakeTradingClient()
+    adapter = AlpacaPaperBrokerAdapter(
+        "paper-key",
+        "paper-secret",
+        trading_client=client,
+        trading_stream=FakeTradingStream(),
+    )
+    order = await adapter.close_position("NVDA260918C00120000")
+    assert order.broker_order_id == "order-1"
+    assert order.status == "accepted"

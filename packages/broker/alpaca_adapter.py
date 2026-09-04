@@ -183,6 +183,10 @@ class AlpacaPaperBrokerAdapter:
     async def cancel_order(self, broker_order_id: str) -> None:
         await asyncio.to_thread(self._client.cancel_order_by_id, broker_order_id)
 
+    async def close_position(self, symbol_or_asset_id: str) -> BrokerOrder:
+        raw = await asyncio.to_thread(self._client.close_position, symbol_or_asset_id)
+        return self._map_order(raw)
+
     async def get_order(
         self,
         *,

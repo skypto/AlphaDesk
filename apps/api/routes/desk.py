@@ -796,6 +796,28 @@ async def broker_positions(
     return await _broker_store(request, context).list_positions()
 
 
+@router.post("/broker/positions/{symbol_or_asset_id}/close", response_model=BrokerOrder)
+async def close_position(
+    symbol_or_asset_id: str,
+    request: Request,
+    context: WorkspaceContext = Depends(require_workspace),
+) -> BrokerOrder:
+    secrets = await _credential_store(request).reveal(context.workspace_id, "ALPACA")
+    if secrets is None:
+        raise HTTPException(status_code=409, detail="Alpaca credential unavailable")
+    adapter = AlpacaPaperBrokerAdapter(str(secrets["api_key_id"]), str(secrets["secret_key"]))
+    try:
+        order = await adapter.close_position(symbol_or_asset_id)
+        projections = _broker_store(request, context)
+        snapshot = await adapter.reconcile()
+        await projections.save_snapshot(snapshot)
+        return order
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    finally:
+        await adapter.close()
+
+
 @router.get("/broker/orders")
 async def broker_orders(
     request: Request, context: WorkspaceContext = Depends(require_workspace)
