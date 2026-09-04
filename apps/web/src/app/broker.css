@@ -1,0 +1,38 @@
+.data-list {
+  margin-top: 16px;
+}
+
+.data-list > div {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.data-list strong {
+  font-size: 10px;
+}
+
+.data-list span {
+  overflow: hidden;
+  color: #7b8581;
+  font: 8px ui-monospace, monospace;
+  text-overflow: ellipsis;
+}
+
+.data-list b {
+  color: #4d725e;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.guardian-controls { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center; margin-bottom: 14px; }
+.guardian-actions { display: flex; gap: 8px; }
+.guardian-actions button { border: 1px solid var(--line); background: #f7f7f2; border-radius: 5px; padding: 9px 12px; color: var(--ink); cursor: pointer; font-size: 9px; font-weight: 700; }
+.guardian-actions .danger-action { border-color: #d9a297; background: #f6e5e1; color: #8c3d31; }
+.guardian-message { grid-column: 1 / -1; margin: 0; color: #8c3d31; font-size: 9px; }
+.replay-tabs { display: flex; gap: 6px; margin: -6px 0 14px; }
+.replay-tabs button { border: 1px solid var(--line); background: var(--card); color: var(--muted); border-radius: 5px; padding: 7px 10px; cursor: pointer; font-size: 8px; font-weight: 800; letter-spacing: .08em; }
+.replay-tabs button.active { background: var(--ink); border-color: var(--ink); color: var(--lime); }

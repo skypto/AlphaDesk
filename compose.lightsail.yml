@@ -1,0 +1,101 @@
+name: alphadesk
+
+x-python-environment: &python-environment
+  ALPHADESK_MODE: PAPER_ONLY
+  ALPHADESK_DATABASE_URL: postgresql+psycopg://alphadesk:${POSTGRES_PASSWORD}@postgres:5432/alphadesk
+  ALPHADESK_NATS_URL: nats://nats:4222
+  ALPHADESK_INFRASTRUCTURE_CHECKS: "true"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: alphadesk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: alphadesk
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alphadesk -d alphadesk"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "5"}}
+
+  nats:
+    image: nats:2-alpine
+    command: ["-js", "-m", "8222", "-sd", "/data"]
+    volumes: [nats_data:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8222/healthz >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "5"}}
+
+  api:
+    build: {context: ., dockerfile: docker/python.Dockerfile}
+    command: ["sh", "-c", "alembic upgrade head && python -m apps.api"]
+    env_file: [.env.local]
+    environment: *python-environment
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "5"}}
+
+  worker:
+    build: {context: ., dockerfile: docker/python.Dockerfile}
+    command: ["python", "-m", "apps.worker"]
+    env_file: [.env.local]
+    environment:
+      <<: *python-environment
+      SUPABASE_SECRET_KEY: ""
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "5"}}
+
+  web:
+    build:
+      context: apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: https://${ALPHADESK_HOSTNAME}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "5"}}
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      ALPHADESK_HOSTNAME: ${ALPHADESK_HOSTNAME}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web: {condition: service_healthy}
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "5"}}
+
+volumes:
+  postgres_data:
+  nats_data:
+  caddy_data:
+  caddy_config:

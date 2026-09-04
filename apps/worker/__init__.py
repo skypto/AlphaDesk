@@ -1,0 +1,1 @@
+"""AlphaDesk background worker."""

@@ -1,0 +1,106 @@
+name: alphadesk
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: alphadesk
+      POSTGRES_PASSWORD: alphadesk_dev
+      POSTGRES_DB: alphadesk
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alphadesk -d alphadesk"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  nats:
+    image: nats:2-alpine
+    command: ["-js", "-m", "8222", "-sd", "/data"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8222/healthz >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/python.Dockerfile
+    command: ["sh", "-c", "alembic upgrade head && python -m apps.api"]
+    env_file:
+      - path: .env.local
+        required: false
+    environment:
+      ALPHADESK_MODE: PAPER_ONLY
+      ALPHADESK_DATABASE_URL: postgresql+psycopg://alphadesk:alphadesk_dev@postgres:5432/alphadesk
+      ALPHADESK_NATS_URL: nats://nats:4222
+      ALPHADESK_INFRASTRUCTURE_CHECKS: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/python.Dockerfile
+    command: ["python", "-m", "apps.worker"]
+    env_file:
+      - path: .env.local
+        required: false
+    environment:
+      ALPHADESK_MODE: PAPER_ONLY
+      ALPHADESK_DATABASE_URL: postgresql+psycopg://alphadesk:alphadesk_dev@postgres:5432/alphadesk
+      ALPHADESK_NATS_URL: nats://nats:4222
+      ALPHADESK_INFRASTRUCTURE_CHECKS: "true"
+      SUPABASE_SECRET_KEY: ""
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  nats_data:

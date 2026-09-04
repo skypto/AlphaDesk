@@ -1,0 +1,1 @@
+"""AlphaDesk application entry points."""
